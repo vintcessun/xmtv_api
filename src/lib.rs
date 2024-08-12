@@ -9,7 +9,7 @@ pub struct Videos{
 }
 
 impl Videos{
-    pub fn get(&mut self)->Result<Self>{
+    pub fn get()->Result<Self>{
         let ret = sql::get()?;
         let videos = get_video_list::resort(ret);
         Ok(Self{videos})
