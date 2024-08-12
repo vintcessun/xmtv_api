@@ -15,7 +15,7 @@ pub struct VideoUrl{
     pub time:u32
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Video{
     pub title:String,
     pub range:Vec<VideoUrl>
@@ -129,6 +129,12 @@ pub fn resort (urls:Vec<VideoUrl>)->Vec<Video>{
 pub struct Videoplay{
     pub name:String,
     pub url:String
+}
+
+impl Videoplay{
+    pub fn get(self)->(String, String){
+        (self.name, self.url)
+    }
 }
 
 pub fn get_video_to_url(mut videos:Vec<VideoUrl>)->Result<Vec<VideoUrl>>{
