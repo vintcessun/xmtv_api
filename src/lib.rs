@@ -1,7 +1,8 @@
 mod sql;
 mod get_video_list;
-use get_video_list::{Video, Videoplay};
+use get_video_list::Video;
 use anyhow::Result;
+pub use get_video_list::Videoplay;
 
 #[derive(Debug)]
 pub struct Videos{
