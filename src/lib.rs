@@ -22,6 +22,13 @@ impl Videos{
     pub fn index(&self, index: usize)->Video{
         self.videos[index].clone()
     }
+
+    pub fn renew(&mut self)->Result<()>{
+        let ret = sql::get()?;
+        let videos = get_video_list::resort(ret);
+        *self = Self{videos};
+        Ok(())
+    }
 }
 
 
