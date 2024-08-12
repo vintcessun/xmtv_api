@@ -9,11 +9,10 @@ pub struct Videos{
 }
 
 impl Videos{
-    pub fn get(&mut self)->Result<()>{
+    pub fn get(&mut self)->Result<Self>{
         let ret = sql::get()?;
-        let ret = get_video_list::resort(ret);
-        self.videos = ret;
-        Ok(())
+        let videos = get_video_list::resort(ret);
+        Ok(Self{videos})
     }
 
     pub fn random(&self)->Result<Vec<Videoplay>>{
