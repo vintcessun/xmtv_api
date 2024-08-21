@@ -5,7 +5,7 @@ pub use get_video_list::*;
 
 #[derive(Debug)]
 pub struct Videos {
-    videos: Vec<Video>,
+    pub videos: Vec<Video>,
 }
 
 impl Videos {
