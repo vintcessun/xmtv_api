@@ -1,3 +1,21 @@
+/*
+对于编译不过的情况在github上有人解决了这个问题
+在issue：https://github.com/zmwangx/rust-ffmpeg/issues/138
+I managed to fix it after 7 hours of work. What I did was using the GNU build guide found in the build wiki of this repo. Afterwards I:
+installed vcpkg
+ran vcpkg integrate install
+ran: vcpkg install ffmpeg[core,avcodec,avformat,swscale,avdevice,avfilter] --triplet x64-windows --recurse
+The avdevice component includes libavdevice, and the avfilter component includes libavfilter.
+
+You should than get this error:
+usr/include/libswresample/swresample.h is missing error (or something along these lines, it will appear at the bottom of the screen)
+the file is located in this path (if you used the default download location for vcpkg) :
+C:\Users\USERNAME\vcpkg\buildtrees\ffmpeg\src\n5.1.2-f31542651f.clean (libswresample will be one of the folders in here)
+move it over to:
+C:\Users\USERNAME\vcpkg\installed\x64-windows\include
+
+run cargo build again and it should work just fine.
+ */
 use anyhow::Result;
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{error, info, warn};
