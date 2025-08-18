@@ -1,9 +1,9 @@
 [package]
 name = "xmtv_api"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-description = "一个封装好的自用库"
+description = "一个封装好用来解析XMTV的API"
 
 [dependencies]
 log = "0.4.22"

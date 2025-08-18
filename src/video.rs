@@ -96,7 +96,7 @@ pub async fn get_search_body() -> Result<SearchBody> {
     Ok(body)
 }
 
-pub async fn get() -> Result<Vec<Video>> {
+pub async fn get() -> Result<Vec<VideoUrl>> {
     let body = get_search_body().await?;
 
     let mut ret: Vec<VideoUrl> = Vec::new();
@@ -146,7 +146,7 @@ pub async fn get() -> Result<Vec<Video>> {
         info!("获取到单个视频信息 video = {:?}", &video);
         ret.push(video);
     }
-    Ok(sort_by_title(ret))
+    Ok(ret)
 }
 
 pub async fn get_video_url(url: &str) -> Result<String> {

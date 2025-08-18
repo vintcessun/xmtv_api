@@ -14,7 +14,8 @@ pub struct Videos {
 impl Videos {
     pub async fn get_from_internet() -> Result<Self> {
         let ts = Utc::now().timestamp();
-        let videos = video::get().await?;
+        let urls = video::get().await?;
+        let videos = video::sort_by_title(urls);
         Ok(Self {
             videos,
             last_update: ts,
@@ -65,7 +66,8 @@ impl Videos {
         if ts - last_ts <= 24 * 60 * 60 {
             return Ok(());
         }
-        let videos = video::get().await?;
+        let urls = video::get().await?;
+        let videos = video::sort_by_title(urls);
         *self = Self {
             videos,
             last_update: ts,
