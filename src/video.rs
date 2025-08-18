@@ -1,28 +1,9 @@
-/*
-对于编译不过的情况在github上有人解决了这个问题
-在issue：https://github.com/zmwangx/rust-ffmpeg/issues/138
-I managed to fix it after 7 hours of work. What I did was using the GNU build guide found in the build wiki of this repo. Afterwards I:
-installed vcpkg
-ran vcpkg integrate install
-ran: vcpkg install ffmpeg[core,avcodec,avformat,swscale,avdevice,avfilter] --triplet x64-windows --recurse
-The avdevice component includes libavdevice, and the avfilter component includes libavfilter.
-
-You should than get this error:
-usr/include/libswresample/swresample.h is missing error (or something along these lines, it will appear at the bottom of the screen)
-the file is located in this path (if you used the default download location for vcpkg) :
-C:\Users\USERNAME\vcpkg\buildtrees\ffmpeg\src\n5.1.2-f31542651f.clean (libswresample will be one of the folders in here)
-move it over to:
-C:\Users\USERNAME\vcpkg\installed\x64-windows\include
-
-run cargo build again and it should work just fine.
- */
 use anyhow::Result;
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{error, info, warn};
 use rand::Rng;
-use reqwest::blocking::Client;
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use url::Url;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,7 +11,7 @@ pub struct VideoUrl {
     pub title: String,
     pub name: String,
     pub url: String,
-    pub time: u32,
+    pub time: u128,
 }
 
 impl PartialEq for VideoUrl {
@@ -39,30 +20,91 @@ impl PartialEq for VideoUrl {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Video {
     pub title: String,
     pub range: Vec<VideoUrl>,
 }
 
-pub fn get() -> Result<Vec<VideoUrl>> {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IndexPicture {
+    host: String,
+    dir: String,
+    path: String,
+    filepath: String,
+    filename: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContentUrls {
+    pub www: String,
+    pub h5: String,
+    pub share: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VideoExtra {
+    pub site_name: String,
+    pub is_top: u8,
+    pub is_hot: u8,
+    pub is_slide: u8,
+    pub is_headline: u8,
+    pub status: u64,
+    pub label_ids: Vec<u64>,
+    pub order_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VideoInfo {
+    pub id: u64,
+    pub site_id: u64,
+    pub module_id: String,
+    pub bundle_id: String,
+    pub r#type: String,
+    pub title: String,
+    pub content_id: u64,
+    pub content_from_id: u64,
+    pub detail_id: u64,
+    pub create_time: u128,
+    pub indexpic: IndexPicture,
+    pub publish_time: u128,
+    pub is_publish: u8,
+    pub column_id: u64,
+    pub main_column: u64,
+    pub parents_column: Vec<String>,
+    pub content_urls: ContentUrls,
+    pub extra: VideoExtra,
+    pub brief: Option<String>,
+    pub source: String,
+    pub outlink: String,
+    pub publish_time_stamp: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchBody {
+    pub total: usize,
+    pub data: Vec<VideoInfo>,
+}
+
+pub async fn get_search_body() -> Result<SearchBody> {
     let url = Url::parse("https://mapi1.kxm.xmtv.cn/api/open/xiamen/web_search_list.php?count=10000&search_text=%E6%96%97%E9%98%B5%E6%9D%A5%E7%9C%8B%E6%88%8F&offset=0&bundle_id=livmedia&order_by=publish_time&time=0&with_count=1")?;
     info!("获取视频列表 url = {:?}", &url);
 
-    let res = Client::new().get(url).send()?;
-    let text: String = res.text()?;
-    let json: Value = serde_json::from_str(text.as_str())?;
-    info!("获取到视频信息 json = {}", json.to_string());
+    let res = Client::new().get(url).send().await?;
+    let body = res.json::<SearchBody>().await?;
+    assert!(body.data.len() == body.total, "解析数量必须和请求数量相同");
+    Ok(body)
+}
 
-    let mut ret: Vec<VideoUrl> = vec![];
-    let data = match json["data"].as_array() {
-        Some(ret) => ret,
-        None => &vec![],
-    };
+pub async fn get() -> Result<Vec<Video>> {
+    let body = get_search_body().await?;
+
+    let mut ret: Vec<VideoUrl> = Vec::new();
+    let data = body.data;
     info!("获取到视频列表 data = {:?}", &data);
 
-    for i in data.iter().rev() {
-        let name = i["title"].to_string().replace('\"', "");
+    for ele in data {
+        let name = ele.title;
         let position = match name.find("斗阵来看戏") {
             Some(ret) => ret,
             _ => name.len(),
@@ -72,19 +114,13 @@ pub fn get() -> Result<Vec<VideoUrl>> {
             .split('(')
             .collect::<Vec<_>>()[0]
             .replace(' ', "");
-        let url_into_share = match i["content_urls"]["share"].as_str() {
-            Some(ret) => ret.to_string(),
-            _ => {
-                continue;
-            }
-        };
+        let url_into_share = ele.content_urls.share;
         let position = name.find("斗阵来看戏").unwrap_or(0) + "斗阵来看戏".len();
         let t: &str = &name[position..];
         let t = t.split(' ').collect::<Vec<_>>();
         let t = if t.len() >= 2 {
             t[1].replace(['.', '-'], "")
         } else {
-            //let t: &str = t[0];
             match url_into_share.find('-') {
                 Some(_) => {
                     let t = url_into_share.split('/').collect::<Vec<_>>();
@@ -100,7 +136,7 @@ pub fn get() -> Result<Vec<VideoUrl>> {
                 }
             }
         };
-        let t = t.parse::<u32>()?;
+        let t = t.parse()?;
         let video = VideoUrl {
             title,
             name,
@@ -110,35 +146,24 @@ pub fn get() -> Result<Vec<VideoUrl>> {
         info!("获取到单个视频信息 video = {:?}", &video);
         ret.push(video);
     }
-    Ok(ret)
+    Ok(sort_by_title(ret))
 }
 
-pub fn get_video_url(url: &String) -> Result<String> {
-    let url_into_share = Url::parse(url.as_str())?;
-    info!("获取视频页面 url = {:?}", url);
+pub async fn get_video_url(url: &str) -> Result<String> {
+    let url_into_share = Url::parse(url)?;
+    info!("获取视频页面 url = {url:?}");
 
-    let res = loop {
-        match Client::new().get(url_into_share.clone()).send() {
-            Ok(ret) => {
-                info!("获取到页面 ret = {:?}", &ret);
-                break ret;
-            }
-            Err(_) => {
-                error!("获取页面失败 url = {:?}", url);
-                info!("重试");
-            }
-        }
-    };
-    let text: String = res.text()?;
+    let res = Client::new().get(url_into_share.clone()).send().await?;
+    let text = res.text().await?;
     let text = text[(text.find("<source src=").unwrap_or(0) + 13)..].to_string();
     let download_url = text[..(text.find('\"').unwrap_or(0))].to_string();
     info!("从 {:?} 获取到视频源地址 {:?}", &url, &download_url);
     Ok(download_url)
 }
 
-pub fn resort(urls: Vec<VideoUrl>) -> Vec<Video> {
-    let mut videos: Vec<Video> = vec![];
-    for url in &urls {
+pub fn sort_by_title(urls: Vec<VideoUrl>) -> Vec<Video> {
+    let mut videos: Vec<Video> = Vec::new();
+    for url in urls {
         let mut exists = false;
         for video in &mut videos {
             if url.title == video.title {
@@ -149,7 +174,7 @@ pub fn resort(urls: Vec<VideoUrl>) -> Vec<Video> {
         if !exists {
             let mut video = Video {
                 title: url.title.clone(),
-                range: vec![],
+                range: Vec::new(),
             };
             video.range.push(url.clone());
             videos.push(video);
@@ -161,13 +186,21 @@ pub fn resort(urls: Vec<VideoUrl>) -> Vec<Video> {
     videos
 }
 
+pub fn resort(videos: Vec<Video>) -> Vec<VideoUrl> {
+    let mut urls = Vec::new();
+    for video in videos {
+        urls.extend(video.range);
+    }
+    urls
+}
+
 #[derive(Debug)]
 pub struct Videoplay {
     pub name: String,
     pub url: String,
 }
 
-pub fn get_video_to_url(mut videos: Vec<VideoUrl>) -> Result<Vec<VideoUrl>> {
+pub async fn get_video_to_url(mut videos: Vec<VideoUrl>) -> Result<Vec<VideoUrl>> {
     let len = videos.len().try_into()?;
     let pb = ProgressBar::new(len);
     pb.set_style(ProgressStyle::default_bar()
@@ -178,7 +211,7 @@ pub fn get_video_to_url(mut videos: Vec<VideoUrl>) -> Result<Vec<VideoUrl>> {
                 warn!("检测到已获得地址");
                 break video.url.clone();
             }
-            match get_video_url(&video.url) {
+            match get_video_url(&video.url).await {
                 Ok(ret) => {
                     warn!("成功获取 ret = {:?}", &ret);
                     break ret;
@@ -201,7 +234,6 @@ pub fn get_random_url_list(videos: &[Video]) -> Result<Vec<Videoplay>> {
     let mut ret = Vec::with_capacity(12);
     for i in &randone.range {
         let name = i.name.clone();
-        //let url = get_video_url(&i.url)?;
         let url = i.url.clone();
         let one = Videoplay { name, url };
         ret.push(one);

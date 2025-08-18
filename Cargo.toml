@@ -1,6 +1,6 @@
 [package]
 name = "xmtv_api"
-version = "0.1.7"
+version = "0.2.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "一个封装好的自用库"
@@ -8,11 +8,11 @@ description = "一个封装好的自用库"
 [dependencies]
 log = "0.4.22"
 chrono = "0.4.38"
-rusqlite = "0.32.0"
 url = "2.5.2"
-reqwest = { version = "0.11", features = ["blocking"] }
+reqwest = { version = "0.11", features = ["blocking", "json"] }
 rand = "0.8.5"
 anyhow = "1.0.86"
 serde_json = "1.0.120"
 indicatif = "0.17.8"
 serde = { version = "1.0.204", features = ["derive"] }
+tokio = { version = "1.47.1", features = ["fs"] }
