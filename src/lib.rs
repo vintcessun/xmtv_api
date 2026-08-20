@@ -61,11 +61,17 @@ impl Videos {
 }
 
 impl Videos {
+    /// 距离上次抓取超过 24 小时才重新抓。
     pub async fn renew(&mut self) -> Result<()> {
-        let last_ts = self.last_update;
+        self.renew_after(24 * 60 * 60).await?;
+        Ok(())
+    }
+
+    /// 距离上次抓取超过 `ttl_secs` 秒才重新抓，否则原样返回。
+    pub async fn renew_after(&mut self, ttl_secs: i64) -> Result<bool> {
         let ts = Utc::now().timestamp();
-        if ts - last_ts <= 24 * 60 * 60 {
-            return Ok(());
+        if ts - self.last_update <= ttl_secs {
+            return Ok(false);
         }
         let urls = video::get().await?;
         let videos = video::sort_by_title(urls);
@@ -73,7 +79,26 @@ impl Videos {
             videos,
             last_update: ts,
         };
-        Ok(())
+        Ok(true)
+    }
+
+    /// 带本地缓存地拿到片源列表：缓存还新鲜就直接用，过期了才去请求上游。
+    ///
+    /// 上游接口一次要返回两千多条，频繁请求会被限流，缓存不只是快，也是必要的。
+    pub async fn cached<P: AsRef<Path>>(cache: P, ttl_secs: i64) -> Result<Self> {
+        let cache = cache.as_ref();
+        let mut videos = match Self::read_from_file_tokio(cache).await {
+            Ok(v) => v,
+            Err(_) => Self {
+                videos: Vec::new(),
+                // 时间戳设成 0，保证下面一定会去抓一次
+                last_update: 0,
+            },
+        };
+        if videos.renew_after(ttl_secs).await? {
+            videos.save_to_file_tokio(cache).await?;
+        }
+        Ok(videos)
     }
 }
 

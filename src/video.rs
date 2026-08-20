@@ -153,7 +153,8 @@ where
                 warn!("{what} 第 {} 次失败: {e}", i + 1);
                 last = Some(e);
                 if i + 1 < attempts {
-                    tokio::time::sleep(Duration::from_secs(2u64.pow(i.min(4) as u32))).await;
+                    // 上游会限流，退避要给得够久，否则五次重试十几秒就用完了
+                    tokio::time::sleep(Duration::from_secs(5 * 2u64.pow(i.min(4) as u32))).await;
                 }
             }
         }
