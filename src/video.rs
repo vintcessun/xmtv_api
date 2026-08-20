@@ -203,39 +203,16 @@ pub async fn get() -> Result<Vec<VideoUrl>> {
             .collect::<Vec<_>>()[0]
             .replace(' ', "");
         let url_into_share = ele.content_urls.share;
-        let position = name.find("斗阵来看戏").unwrap_or(0) + "斗阵来看戏".len();
-        let t: &str = &name[position..];
-        let t = t.split(' ').collect::<Vec<_>>();
-        let t = if t.len() >= 2 {
-            t[1].replace(['.', '-'], "")
-        } else {
-            match url_into_share.find('-') {
-                Some(_) => {
-                    let parts = url_into_share.split('/').collect::<Vec<_>>();
-                    match parts.get(4) {
-                        Some(t) => t.replace(['.', '-'], ""),
-                        None => {
-                            warn!(
-                                "无法从分享链接推断日期，已忽略 name = {name:?} url = {url_into_share:?}"
-                            );
-                            continue;
-                        }
-                    }
-                }
-                _ => {
-                    error!("存在一些无法识别的组别已经忽略，下面是一些信息或许有助于修复");
-                    warn!("title = {:?}", title);
-                    warn!("name = {:?}", name);
-                    warn!("url_into_share = {:?}", url_into_share);
-                    continue;
-                }
-            }
-        };
-        // 过去这里用 `?`，一条脏数据会让整次抓取失败，现在只跳过这一条。
-        let t: u128 = match t.parse() {
-            Ok(t) => t,
-            Err(e) => {
-                warn!("解析日期 {t:?} 失败({e})，已忽略 name = {name:?}");
+        // 先从标题里找日期，找不到再退回分享链接。
+        // 过去是按空格切开取第 1 段，标题里多打一个空格（上游确实有这种数据）
+        // 就会切出空串，整条被丢掉。
+        let t = match extract_date(&name).or_else(|| extract_date(&url_into_share)) {
+            Some(t) => t,
+            None => {
+                error!("存在一些无法识别的组别已经忽略，下面是一些信息或许有助于修复");
+                warn!("title = {:?}", title);
+                warn!("name = {:?}", name);
+                warn!("url_into_share = {:?}", url_into_share);
                 continue;
             }
         };
@@ -250,6 +227,49 @@ pub async fn get() -> Result<Vec<VideoUrl>> {
         ret.push(video);
     }
     Ok(ret)
+}
+
+/// 从一段文本里找出第一个形如 `2026.08.17` / `2026-08-17` / `20260817` 的日期，
+/// 返回 `20260817` 这样的数字。
+///
+/// 不再依赖"日期一定在第几个空格之后"这种脆弱假设：上游标题里空格数量并不稳定，
+/// 按位置切分会把整条数据丢掉。
+pub fn extract_date(text: &str) -> Option<u128> {
+    let bytes = text.as_bytes();
+    for start in 0..bytes.len() {
+        if !bytes[start].is_ascii_digit() {
+            continue;
+        }
+        // 前一个字符也是数字的话，说明我们在一串数字的中间，跳过
+        if start > 0 && bytes[start - 1].is_ascii_digit() {
+            continue;
+        }
+        let mut digits = String::with_capacity(8);
+        for &b in &bytes[start..] {
+            if b.is_ascii_digit() {
+                digits.push(b as char);
+                if digits.len() == 8 {
+                    break;
+                }
+            } else if (b == b'.' || b == b'-') && !digits.is_empty() {
+                // 允许 2026.08.17 这样的分隔符
+                continue;
+            } else {
+                break;
+            }
+        }
+        if digits.len() != 8 {
+            continue;
+        }
+        // 粗略校验年月日，避免把别的数字串当成日期
+        let year: u32 = digits[0..4].parse().ok()?;
+        let month: u32 = digits[4..6].parse().ok()?;
+        let day: u32 = digits[6..8].parse().ok()?;
+        if (1900..=2999).contains(&year) && (1..=12).contains(&month) && (1..=31).contains(&day) {
+            return digits.parse().ok();
+        }
+    }
+    None
 }
 
 /// 从分享页面里抠出真正的 mp4 地址。
@@ -398,6 +418,30 @@ mod tests {
             "https://example.com/b.mp4"
         );
         assert!(extract_source_url("<html>没有视频</html>").is_err());
+    }
+
+    #[test]
+    fn test_extract_date() {
+        assert_eq!(
+            extract_date("皇家奇缘（1） 斗阵来看戏 2026.08.17 - 厦门卫视"),
+            Some(20260817)
+        );
+        // 上游确实有标题里多一个空格的数据，过去这种会被整条丢掉
+        assert_eq!(
+            extract_date("三代奇缘（1） 斗阵来看戏  2025.12.22 - 厦门卫视"),
+            Some(20251222)
+        );
+        // 标题里 《斗阵来看戏》 出现两次，也不该影响取日期
+        assert_eq!(
+            extract_date("《斗阵来看戏》栏目签约仪式 斗阵来看戏 2026.05.28 - 厦门卫视"),
+            Some(20260528)
+        );
+        assert_eq!(extract_date("莫愁女（3） 斗阵来看戏 2025-12-19"), Some(20251219));
+        assert_eq!(extract_date("紧凑格式 20240131 结尾"), Some(20240131));
+        // 集数那种一两位数字不能被当成日期
+        assert_eq!(extract_date("白蛇传（3） 斗阵来看戏"), None);
+        // 月份 13 不合法
+        assert_eq!(extract_date("20261301"), None);
     }
 
     #[test]
