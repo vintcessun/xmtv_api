@@ -42,7 +42,8 @@ impl Videos {
     }
 
     pub fn save_to_file<P: AsRef<Path>>(&self, filename: P) -> Result<()> {
-        let file = std::fs::File::open(filename)?;
+        // 这里原本是 File::open，只读句柄写不进去，保存永远失败
+        let file = std::fs::File::create(filename)?;
         let writer = std::io::BufWriter::new(file);
         serde_json::to_writer(writer, self)?;
         Ok(())
@@ -79,13 +80,31 @@ impl Videos {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reqwest::blocking::Client;
-    use video::SearchBody;
+
+    /// 需要联网，验证上游接口返回的 JSON 仍然能被结构体解析。
+    #[tokio::test]
+    #[ignore = "需要联网"]
+    async fn test_struct() {
+        let data = video::get_search_body().await.unwrap();
+        println!("{} {}", data.data.len(), data.total)
+    }
 
     #[test]
-    fn test_struct() {
-        let res = Client::new().get("https://mapi1.kxm.xmtv.cn/api/open/xiamen/web_search_list.php?count=10000&search_text=%E6%96%97%E9%98%B5%E6%9D%A5%E7%9C%8B%E6%88%8F&offset=0&bundle_id=livmedia&order_by=publish_time&time=0&with_count=1").send().unwrap();
-        let data = res.json::<SearchBody>().unwrap();
-        println!("{} {}", data.data.len(), data.total)
+    fn test_save_and_read_roundtrip() {
+        let dir = std::env::temp_dir().join("xmtv_api_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("videos.json");
+        let videos = Videos {
+            videos: vec![video::Video {
+                title: "测试".into(),
+                range: vec![],
+            }],
+            last_update: 42,
+        };
+        videos.save_to_file(&path).unwrap();
+        let back = Videos::read_from_file(&path).unwrap();
+        assert_eq!(back.last_update, 42);
+        assert_eq!(back.videos.len(), 1);
+        std::fs::remove_file(&path).ok();
     }
 }
