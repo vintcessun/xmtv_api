@@ -9,16 +9,31 @@ use std::time::Duration;
 use url::Url;
 
 /// 整个进程共用一个 `Client`，复用连接池，避免每次请求都新建 TLS 连接。
+///
+/// 默认**不走代理**：XMTV 是国内的 CDN，把几百兆的视频塞进本机代理只会更慢
+/// （实测代理繁忙时下载速度从 86 MB/min 掉到 6 MB/min）。
+/// 确实需要走代理时设 `XMTV_USE_PROXY=1`。
 static CLIENT: Lazy<Client> = Lazy::new(|| {
-    Client::builder()
+    let builder = Client::builder()
         .user_agent(
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
              (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
         )
         .connect_timeout(Duration::from_secs(30))
-        .pool_idle_timeout(Duration::from_secs(90))
-        .build()
-        .expect("构建 reqwest Client 失败")
+        .pool_idle_timeout(Duration::from_secs(90));
+
+    let use_proxy = std::env::var("XMTV_USE_PROXY")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    let builder = if use_proxy {
+        info!("XMTV_USE_PROXY 已开启，请求将走系统代理");
+        builder
+    } else {
+        // reqwest 默认会读 HTTP_PROXY/HTTPS_PROXY 环境变量，这里明确禁用
+        builder.no_proxy()
+    };
+
+    builder.build().expect("构建 reqwest Client 失败")
 });
 
 /// 供外部复用同一个连接池（例如下载视频）。
