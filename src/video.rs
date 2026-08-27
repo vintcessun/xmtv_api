@@ -211,12 +211,13 @@ pub async fn get() -> Result<Vec<VideoUrl>> {
     for ele in data {
         let id = ele.id;
         let name = ele.title;
-        let position = name.find("斗阵来看戏").unwrap_or(name.len());
-        let title = name[0..position]
-            .replace('（', "(")
-            .split('(')
-            .collect::<Vec<_>>()[0]
-            .replace(' ', "");
+        let title = match extract_play_title(&name) {
+            Some(t) => t,
+            None => {
+                warn!("无法从 {name:?} 里解析出剧目名，已忽略");
+                continue;
+            }
+        };
         let url_into_share = ele.content_urls.share;
         // 先从标题里找日期，找不到再退回分享链接。
         // 过去是按空格切开取第 1 段，标题里多打一个空格（上游确实有这种数据）
@@ -242,6 +243,37 @@ pub async fn get() -> Result<Vec<VideoUrl>> {
         ret.push(video);
     }
     Ok(ret)
+}
+
+/// 从条目标题里解析出剧目名。标题的格式是 `{剧目名}（N） 斗阵来看戏 {日期} - 厦门卫视`。
+///
+/// 关键是要用 `rfind` 而不是 `find`：有的标题里「斗阵来看戏」会出现两次，
+/// 例如 `《斗阵来看戏》栏目曾小真歌仔戏剧团签约仪式 斗阵来看戏 2026.05.28 - 厦门卫视`，
+/// 用 `find` 会命中 `《》` 里面那个，剧目名被切成单个 `《`，
+/// 结果就是投出一个标题叫「《」的垃圾稿件。
+pub fn extract_play_title(name: &str) -> Option<String> {
+    const KEYWORD: &str = "斗阵来看戏";
+    let head = match name.rfind(KEYWORD) {
+        Some(p) => &name[..p],
+        None => name,
+    };
+    let title = head
+        .replace('（', "(")
+        .split('(')
+        .next()
+        .unwrap_or_default()
+        .replace(' ', "");
+    let title = title.trim().to_string();
+
+    // 只剩标点/括号的不是剧目名
+    if title.is_empty()
+        || !title
+            .chars()
+            .any(|c| c.is_alphanumeric() || ('\u{4e00}'..='\u{9fff}').contains(&c))
+    {
+        return None;
+    }
+    Some(title)
 }
 
 /// 从一段文本里找出第一个形如 `2026.08.17` / `2026-08-17` / `20260817` 的日期，
@@ -433,6 +465,29 @@ mod tests {
             "https://example.com/b.mp4"
         );
         assert!(extract_source_url("<html>没有视频</html>").is_err());
+    }
+
+    #[test]
+    fn test_extract_play_title() {
+        assert_eq!(
+            extract_play_title("皇家奇缘（1） 斗阵来看戏 2026.08.17 - 厦门卫视").as_deref(),
+            Some("皇家奇缘")
+        );
+        assert_eq!(
+            extract_play_title("三娘教子 斗阵来看戏 2026.04.27 - 厦门卫视").as_deref(),
+            Some("三娘教子")
+        );
+        // 「斗阵来看戏」出现两次：用 find 会把剧目名切成单个「《」，必须用 rfind
+        assert_eq!(
+            extract_play_title(
+                "《斗阵来看戏》栏目曾小真歌仔戏剧团签约仪式 斗阵来看戏 2026.05.28 - 厦门卫视"
+            )
+            .as_deref(),
+            Some("《斗阵来看戏》栏目曾小真歌仔戏剧团签约仪式")
+        );
+        // 切出来只剩标点的，不是剧目名
+        assert_eq!(extract_play_title("《 斗阵来看戏 2026.05.28"), None);
+        assert_eq!(extract_play_title("斗阵来看戏 2026.05.28"), None);
     }
 
     #[test]
