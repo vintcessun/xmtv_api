@@ -209,40 +209,43 @@ pub async fn get() -> Result<Vec<VideoUrl>> {
     info!("获取到视频列表 共 {} 条", data.len());
 
     for ele in data {
-        let id = ele.id;
-        let name = ele.title;
-        let title = match extract_play_title(&name) {
-            Some(t) => t,
-            None => {
-                warn!("无法从 {name:?} 里解析出剧目名，已忽略");
-                continue;
+        match to_video_url(&ele) {
+            Ok(video) => {
+                info!("获取到单个视频信息 video = {:?}", video);
+                ret.push(video);
             }
-        };
-        let url_into_share = ele.content_urls.share;
-        // 先从标题里找日期，找不到再退回分享链接。
-        // 过去是按空格切开取第 1 段，标题里多打一个空格（上游确实有这种数据）
-        // 就会切出空串，整条被丢掉。
-        let t = match extract_date(&name).or_else(|| extract_date(&url_into_share)) {
-            Some(t) => t,
-            None => {
-                error!("存在一些无法识别的组别已经忽略，下面是一些信息或许有助于修复");
-                warn!("title = {:?}", title);
-                warn!("name = {:?}", name);
-                warn!("url_into_share = {:?}", url_into_share);
-                continue;
+            Err(why) => {
+                // 单条解析不了**只跳过这一条**。0.2.2 就是栽在这里：
+                // 某条切不出日期就让整次更新失败，上游新增一个别的栏目
+                // 就能把所有人的更新全部打掉。
+                warn!("{why}，已跳过这一条");
+                warn!("  title = {:?}", ele.title);
+                warn!("  share = {:?}", ele.content_urls.share);
             }
-        };
-        let video = VideoUrl {
-            title,
-            name,
-            url: url_into_share,
-            time: t,
-            id,
-        };
-        info!("获取到单个视频信息 video = {:?}", video);
-        ret.push(video);
+        }
     }
     Ok(ret)
+}
+
+/// 把接口返回的一条记录转成 [`VideoUrl`]。解析不出来返回 `Err`，调用方跳过它。
+///
+/// 抽成一个不联网的纯函数是有意的：上游接口一改，这里就是第一个出问题的地方，
+/// 而拿真实报文喂它就能在测试里提前发现（见 `tests/real_payload.rs`）。
+pub fn to_video_url(info: &VideoInfo) -> Result<VideoUrl, &'static str> {
+    let title = extract_play_title(&info.title).ok_or("解析不出剧目名")?;
+    // 先从标题里找日期，找不到再退回分享链接。
+    // 过去是按空格切开取第 1 段，标题里多打一个空格（上游确实有这种数据）
+    // 就会切出空串，整条被丢掉。
+    let time = extract_date(&info.title)
+        .or_else(|| extract_date(&info.content_urls.share))
+        .ok_or("解析不出播出日期")?;
+    Ok(VideoUrl {
+        title,
+        name: info.title.clone(),
+        url: info.content_urls.share.clone(),
+        time,
+        id: info.id,
+    })
 }
 
 /// 从条目标题里解析出剧目名。标题的格式是 `{剧目名}（N） 斗阵来看戏 {日期} - 厦门卫视`。
