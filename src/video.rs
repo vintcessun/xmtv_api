@@ -509,7 +509,10 @@ mod tests {
             extract_date("《斗阵来看戏》栏目签约仪式 斗阵来看戏 2026.05.28 - 厦门卫视"),
             Some(20260528)
         );
-        assert_eq!(extract_date("莫愁女（3） 斗阵来看戏 2025-12-19"), Some(20251219));
+        assert_eq!(
+            extract_date("莫愁女（3） 斗阵来看戏 2025-12-19"),
+            Some(20251219)
+        );
         assert_eq!(extract_date("紧凑格式 20240131 结尾"), Some(20240131));
         // 集数那种一两位数字不能被当成日期
         assert_eq!(extract_date("白蛇传（3） 斗阵来看戏"), None);

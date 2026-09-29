@@ -70,7 +70,11 @@ fn 真实数据里没有一条解析不了() {
 #[test]
 fn 六年前的老格式也认得() {
     let parsed = 解析(最老);
-    let videos: Vec<_> = parsed.data.iter().filter_map(|i| to_video_url(i).ok()).collect();
+    let videos: Vec<_> = parsed
+        .data
+        .iter()
+        .filter_map(|i| to_video_url(i).ok())
+        .collect();
 
     let 碧海青天: Vec<_> = videos.iter().filter(|v| v.title == "碧海青天").collect();
     assert!(
@@ -114,7 +118,11 @@ fn 最新一批的解析结果对得上() {
 #[test]
 fn 分组和排序() {
     let parsed = 解析(最新);
-    let videos: Vec<_> = parsed.data.iter().filter_map(|i| to_video_url(i).ok()).collect();
+    let videos: Vec<_> = parsed
+        .data
+        .iter()
+        .filter_map(|i| to_video_url(i).ok())
+        .collect();
     let 总数 = videos.len();
     let grouped = sort_by_title(videos);
 
